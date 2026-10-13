@@ -10,3 +10,9 @@ The form's own server code allows framing (`setXFrameOptionsMode(ALLOWALL)` in `
 - `index.html` is the whole site. The form address is written in it once; when the Apps Script deployment changes, edit the `src` and the fallback link.
 - Nothing is stored here and there are no scripts beyond a 12-second "taking a while" hint.
 - Source of truth for the Intake code and notes: the Kadria vault, `_Agent-Only/code/kadria-appscript`.
+
+## /play/ (the per-character QR)
+
+`play/index.html` is where the QR printed on a character's PDF leads: `.../play/#<character id>.<token>`. It loads that character's note from the
+Intake server (`?action=note`, a script-tag call so iOS Safari accepts it), and offers Open in Obsidian (`obsidian://new`), Copy and Download, with the
+three setup steps (Obsidian, BRAT, `glenhiggy-sketch/My-Little-Guy`). The id and token stay after the `#`, so they are not sent to this host.
