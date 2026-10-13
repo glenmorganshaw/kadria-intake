@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<title>Play your character</title>
+<style>
+  :root { --bg: #f6f4ef; --card: #ffffff; --fg: #1d1b16; --muted: #6b665b; --line: #d9d3c4; --accent: #7a3b1e; --accent-fg: #ffffff; --ok: #1f5d33; --bad: #9b2c1f; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #17150f; --card: #211e16; --fg: #efeadc; --muted: #a39d8c; --line: #3a3528; --accent: #e0a070; --accent-fg: #1d1b16; --ok: #7fc795; --bad: #ef8a7c; } }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body { margin: 0; color: var(--fg); background: var(--bg); font: 16px/1.5 -apple-system, system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px calc(32px + env(safe-area-inset-bottom, 0px)); }
+  h1 { font: 700 1.55rem/1.2 Georgia, "Times New Roman", serif; margin: 0 0 4px; text-wrap: balance; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 0 0 16px; }
+  .card h2 { font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  ol { margin: 0; padding-left: 1.2rem; } li { margin: 0 0 10px; } li:last-child { margin: 0; }
+  code { font: 0.92em ui-monospace, Menlo, Consolas, monospace; background: color-mix(in srgb, var(--fg) 8%, transparent); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  button, .btn { appearance: none; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg); font: 600 1rem/1 inherit; padding: 13px 16px; border-radius: 10px; text-decoration: none; cursor: pointer; min-height: 46px; }
+  button.alt { background: transparent; color: var(--accent); }
+  button[disabled] { opacity: 0.5; cursor: default; }
+  #state { margin: 0 0 12px; } .ok { color: var(--ok); } .bad { color: var(--bad); }
+  details { margin-top: 12px; } summary { cursor: pointer; color: var(--muted); }
+  pre { max-height: 14rem; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: 8px; padding: 10px; }
+  .fine { color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Play your character on your phone</h1>
+  <p class="sub">Open your character sheet in My Little Guy, an Obsidian plugin that tracks hit points, spell slots and class features and keeps them in step with your DM.</p>
+
+  <section class="card" aria-live="polite">
+    <h2>Your character</h2>
+    <p id="state">Looking for your character&hellip;</p>
+    <div class="btns">
+      <button id="open" disabled>Open in Obsidian</button>
+      <button id="copy" class="alt" disabled>Copy the note</button>
+      <button id="save" class="alt" disabled>Download the note</button>
+    </div>
+    <details id="peek" hidden><summary>Preview the note</summary><pre id="preview"></pre></details>
+  </section>
+
+  <section class="card">
+    <h2>First time? Three steps</h2>
+    <ol>
+      <li><strong>Install Obsidian</strong> (free) from <a href="https://obsidian.md/download" rel="noopener">obsidian.md</a> or your app store. Open it and create a vault.</li>
+      <li>In Obsidian go to <strong>Settings &rarr; Community plugins</strong>, turn them on, then <strong>Browse</strong> and install <strong>BRAT</strong> and enable it.</li>
+      <li>In BRAT choose <strong>Add a beta plugin</strong> and paste <code>glenhiggy-sketch/My-Little-Guy</code>, then Add. My Little Guy appears in your plugin list: enable it.</li>
+    </ol>
+    <p class="fine" style="margin:12px 0 0">Then come back to this page (scan the QR on your sheet again) and tap <strong>Open in Obsidian</strong>. Your character note is created and linked to your DM's sheet.</p>
+  </section>
+
+  <p class="fine">This link belongs to one character. Keep your printed sheet private: anyone who scans its QR code can open this character. Your DM can reset the link.</p>
+</main>
+<script>
+(function () {
+  var EXEC = "https://script.google.com/macros/s/AKfycbzpd3dobDjH70Nr9mHKBIlrtUE4HSW8I_rW_se_s5PjX8dCxyCIkCug1UN9M00vhadi/exec";
+  var stateEl = document.getElementById("state"), openB = document.getElementById("open"), copyB = document.getElementById("copy"), saveB = document.getElementById("save");
+  var peek = document.getElementById("peek"), preview = document.getElementById("preview");
+  var note = null;
+  function say(text, cls) { stateEl.textContent = text; stateEl.className = cls || ""; }
+
+  var m = /^#([A-Za-z0-9]{6,24})\.([A-Fa-f0-9]{20,64})$/.exec(location.hash);
+  if (!m) { say("This link is incomplete. Scan the QR code on your character sheet again.", "bad"); return; }
+  var id = m[1], token = m[2];
+
+  function enable() { openB.disabled = copyB.disabled = saveB.disabled = false; }
+  function stem(name) { return String(name || "Character").replace(/\.md$/i, ""); }
+
+  openB.addEventListener("click", function () {
+    location.href = "obsidian://new?name=" + encodeURIComponent(stem(note.fileName)) + "&content=" + encodeURIComponent(note.text);
+  });
+  copyB.addEventListener("click", function () {
+    var done = function () { copyB.textContent = "Copied"; setTimeout(function () { copyB.textContent = "Copy the note"; }, 2000); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(note.text).then(done, function () { peek.open = true; });
+    else peek.open = true;
+  });
+  saveB.addEventListener("click", function () {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([note.text], { type: "text/markdown" }));
+    a.download = stem(note.fileName) + ".md";
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+
+  var tries = 0;
+  (function load() {
+    tries++;
+    fetch(EXEC + "?action=note&id=" + encodeURIComponent(id) + "&token=" + encodeURIComponent(token))
+      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r || !r.ok) {
+          say(r && /no note/.test(r.error || "") ? "Your character sheet is not ready yet. Try again in a minute." : "We could not find this character. Scan the QR code on your sheet again, or ask your DM for a new link.", "bad");
+          return;
+        }
+        note = r; say(stem(r.fileName) + " is ready.", "ok");
+        preview.textContent = r.text; peek.hidden = false; enable();
+      })
+      .catch(function () {
+        if (tries < 3) { say("Still looking for your character…"); setTimeout(load, 2500); }
+        else say("The sheet server did not answer. Check your connection and reload this page.", "bad");
+      });
+  })();
+})();
+</script>
+</body>
+</html>
