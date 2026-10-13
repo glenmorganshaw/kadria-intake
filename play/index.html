@@ -87,11 +87,23 @@
     document.body.appendChild(a); a.click(); a.remove();
   });
 
-  var tries = 0;
+  // A script-tag (JSONP) call: iOS Safari is strict about cross-origin fetches to Apps Script, a script tag has no such rule.
+  function jsonp(url, ms) {
+    return new Promise(function (resolve, reject) {
+      var name = "kcb" + Date.now() + Math.floor(Math.random() * 1000), s = document.createElement("script"), t;
+      function done() { clearTimeout(t); try { delete window[name]; } catch (e) { window[name] = undefined; } if (s.parentNode) s.parentNode.removeChild(s); }
+      window[name] = function (d) { done(); resolve(d); };
+      s.onerror = function () { done(); reject(new Error("could not load")); };
+      t = setTimeout(function () { done(); reject(new Error("timed out")); }, ms);
+      s.src = url + "&callback=" + name;
+      document.head.appendChild(s);
+    });
+  }
+
+  var tries = 0, lastWhy = "";
   (function load() {
     tries++;
-    fetch(EXEC + "?action=note&id=" + encodeURIComponent(id) + "&token=" + encodeURIComponent(token))
-      .then(function (r) { return r.json(); })
+    jsonp(EXEC + "?action=note&id=" + encodeURIComponent(id) + "&token=" + encodeURIComponent(token), 20000)
       .then(function (r) {
         if (!r || !r.ok) {
           say(r && /no note/.test(r.error || "") ? "Your character sheet is not ready yet. Try again in a minute." : "We could not find this character. Scan the QR code on your sheet again, or ask your DM for a new link.", "bad");
@@ -100,9 +112,10 @@
         note = r; say(stem(r.fileName) + " is ready.", "ok");
         preview.textContent = r.text; peek.hidden = false; enable();
       })
-      .catch(function () {
-        if (tries < 3) { say("Still looking for your character…"); setTimeout(load, 2500); }
-        else say("The sheet server did not answer. Check your connection and reload this page.", "bad");
+      .catch(function (e) {
+        lastWhy = e && e.message ? e.message : "";
+        if (tries < 3) { say("Still looking for your character…"); setTimeout(load, 2000); }
+        else say("The sheet server did not answer (" + lastWhy + "). Check your connection and reload this page.", "bad");
       });
   })();
 })();
