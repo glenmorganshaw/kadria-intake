@@ -27,6 +27,10 @@
   details { margin-top: 12px; } summary { cursor: pointer; color: var(--muted); }
   pre { max-height: 14rem; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: 8px; padding: 10px; }
   .fine { color: var(--muted); font-size: 0.85rem; }
+  .find-row { display: flex; gap: 8px; }
+  .find-row input { flex: 1; min-width: 0; font: inherit; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--fg); }
+  #matches { list-style: none; padding: 0; margin: 12px 0 0; }
+  #matches button { width: 100%; text-align: left; }
 </style>
 </head>
 <body>
@@ -43,6 +47,17 @@
       <button id="save" class="alt" disabled>Download the note</button>
     </div>
     <details id="peek" hidden><summary>Preview the note</summary><pre id="preview"></pre></details>
+  </section>
+
+  <section class="card" id="finder" hidden>
+    <h2>Find my character</h2>
+    <p class="fine" style="margin:0 0 10px">Link not working? Type your name, or your character's name, exactly as you gave it on the form.</p>
+    <form class="find-row" id="findForm">
+      <input id="findQ" type="text" autocomplete="off" autocapitalize="words" placeholder="Your name or your character's name" aria-label="Your name or your character's name" minlength="3" required>
+      <button id="findBtn" type="submit">Find</button>
+    </form>
+    <p id="findState" class="fine" style="margin:10px 0 0" aria-live="polite"></p>
+    <ul id="matches"></ul>
   </section>
 
   <section class="card">
@@ -69,7 +84,9 @@
   function say(text, cls) { stateEl.textContent = text; stateEl.className = cls || ""; }
 
   var m = /^#([A-Za-z0-9]{6,24})\.([A-Fa-f0-9]{20,64})$/.exec(location.hash);
-  if (!m) { say("This link is incomplete. Scan the QR code on your character sheet again.", "bad"); return; }
+  var finder = document.getElementById("finder");
+  function showFinder() { finder.hidden = false; }
+  if (!m) { say("This link is incomplete. Scan the QR code on your character sheet again, or find your character by name below.", "bad"); showFinder(); return; }
   var id = m[1], token = m[2];
 
   function enable() { openB.disabled = copyB.disabled = saveB.disabled = false; }
@@ -103,13 +120,45 @@
     });
   }
 
+  // The backstop: look the character up by name. The server cuts the sync token out of these notes, so a copy found this way does not sync.
+  var findForm = document.getElementById("findForm"), findQ = document.getElementById("findQ"), findState = document.getElementById("findState"), matchesEl = document.getElementById("matches");
+  findForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var q = findQ.value.trim(), attempt = 0;
+    matchesEl.innerHTML = "";
+    function go() {
+      attempt++;
+      findState.textContent = attempt === 1 ? "Searching…" : "Still searching…";
+      jsonp(EXEC + "?action=find&q=" + encodeURIComponent(q), 25000).then(function (r) {
+        if (!r || !r.ok) { findState.textContent = (r && r.error) || "Nothing found."; return; }
+        if (!r.matches.length) { findState.textContent = "No character with that exact name. Check the spelling, or try the other name."; return; }
+        findState.textContent = r.matches.length === 1 ? "Found one character." : "Found " + r.matches.length + " characters. Tap yours.";
+        r.matches.forEach(function (mt) {
+          var li = document.createElement("li"), b = document.createElement("button");
+          b.type = "button"; b.className = "alt"; b.textContent = mt.characterName + " (" + mt.playerName + ")";
+          b.addEventListener("click", function () {
+            note = mt; say(stem(mt.fileName) + " is ready. Found by name, so it is not linked for syncing: scan the QR on your sheet later to link it.", "ok");
+            preview.textContent = mt.text; peek.hidden = false; enable();
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          });
+          li.appendChild(b); matchesEl.appendChild(li);
+        });
+      }).catch(function () {
+        if (attempt < 3) setTimeout(go, 2000); else findState.textContent = "The sheet server did not answer. Check your connection and try again.";
+      });
+    }
+    go();
+  });
+
   var tries = 0, lastWhy = "";
   (function load() {
     tries++;
     jsonp(EXEC + "?action=note&id=" + encodeURIComponent(id) + "&token=" + encodeURIComponent(token), 20000)
       .then(function (r) {
         if (!r || !r.ok) {
-          say(r && /no note/.test(r.error || "") ? "Your character sheet is not ready yet. Try again in a minute." : "We could not find this character. Scan the QR code on your sheet again, or ask your DM for a new link.", "bad");
+          var notReady = r && /no note/.test(r.error || "");
+          say(notReady ? "Your character sheet is not ready yet. Try again in a minute." : "We could not find this character from the link. Scan the QR code on your sheet again, or find your character by name below.", "bad");
+          if (!notReady) showFinder();
           return;
         }
         note = r; say(stem(r.fileName) + " is ready.", "ok");
@@ -118,7 +167,7 @@
       .catch(function (e) {
         lastWhy = e && e.message ? e.message : "";
         if (tries < 3) { say("Still looking for your character…"); setTimeout(load, 2000); }
-        else say("The sheet server did not answer (" + lastWhy + "). Check your connection and reload this page.", "bad");
+        else { say("The sheet server did not answer (" + lastWhy + "). Check your connection and reload this page, or find your character by name below.", "bad"); showFinder(); }
       });
   })();
 })();
